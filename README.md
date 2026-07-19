@@ -23,7 +23,7 @@ Composite Action + Syft + Cosign.
 ## Usage
 
 ```yaml
-- uses: cybercapybara/sbom-action@v1
+- uses: moveeeax/sbom-action@v1
   with:
     artifact: ./dist
     format: cyclonedx-json
