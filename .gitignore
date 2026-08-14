@@ -1,0 +1,13 @@
+# Generated SBOMs (never commit build output); keep test fixtures tracked.
+/sbom.json
+/sbom.xml
+/sbom.spdx
+/sbom.txt
+/sbom.*.json
+*.sig
+*.pem
+!tests/**
+
+# Editor / OS noise
+*.swp
+.DS_Store

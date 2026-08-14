@@ -1,0 +1,28 @@
+# Example consumer workflow: build an SBOM on every release and attach it.
+# Drop this in a downstream repo as .github/workflows/sbom.yml
+name: sbom
+
+on:
+  release:
+    types: [published]
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write   # required to upload the SBOM as a release asset
+  id-token: write   # required for keyless Cosign signing
+
+jobs:
+  sbom:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate + attach SBOM
+        uses: moveeeax/sbom-action@v1
+        with:
+          artifact: .
+          source-type: dir
+          format: cyclonedx-json
+          fail-on-missing-license: "false"
+          sign: "true"

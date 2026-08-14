@@ -1,0 +1,120 @@
+name: "sbom-action"
+description: "Generate an SBOM with Syft (SPDX/CycloneDX), gate on missing licenses, sign with Cosign, and attach it to the GitHub Release."
+branding:
+  icon: "package"
+  color: "purple"
+
+inputs:
+  artifact:
+    description: "Path or reference to scan (directory, file, or image ref)."
+    required: false
+    default: "."
+  source-type:
+    description: "How to interpret `artifact`: dir | file | image | docker."
+    required: false
+    default: "dir"
+  format:
+    description: "SBOM format: cyclonedx-json | cyclonedx-xml | spdx-json | spdx-tag-value | syft-json | table."
+    required: false
+    default: "cyclonedx-json"
+  output:
+    description: "Output file path. Defaults to sbom.<ext> derived from the format."
+    required: false
+    default: ""
+  fail-on-missing-license:
+    description: "Fail the run if any component lacks license metadata."
+    required: false
+    default: "false"
+  upload-release:
+    description: "Attach the SBOM to the release when the workflow runs on a tag."
+    required: false
+    default: "true"
+  sign:
+    description: "Sign the SBOM with Cosign (keyless) and attach the .sig."
+    required: false
+    default: "false"
+  syft-version:
+    description: "Syft version to install (e.g. v1.18.1)."
+    required: false
+    default: "v1.18.1"
+  cosign-version:
+    description: "Cosign version to install when sign=true."
+    required: false
+    default: "v2.4.1"
+  github-token:
+    description: "Token used to upload the SBOM to the release."
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  sbom-path:
+    description: "Path to the generated SBOM file."
+    value: ${{ steps.sbom.outputs.sbom-path }}
+  format:
+    description: "Canonical Syft format that was produced."
+    value: ${{ steps.sbom.outputs.format }}
+  missing-license-count:
+    description: "Number of components missing license metadata (0 unless the gate ran)."
+    value: ${{ steps.sbom.outputs.missing-license-count }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install Syft
+      shell: bash
+      run: |
+        set -euo pipefail
+        curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh \
+          | sh -s -- -b "${RUNNER_TEMP}/sbom-bin" "${{ inputs.syft-version }}"
+        echo "${RUNNER_TEMP}/sbom-bin" >> "$GITHUB_PATH"
+
+    - name: Install Cosign
+      if: inputs.sign == 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        ver="${{ inputs.cosign-version }}"
+        arch="$(uname -m)"; case "$arch" in x86_64) arch=amd64 ;; aarch64|arm64) arch=arm64 ;; esac
+        curl -sSfL -o "${RUNNER_TEMP}/sbom-bin/cosign" \
+          "https://github.com/sigstore/cosign/releases/download/${ver}/cosign-linux-${arch}"
+        chmod +x "${RUNNER_TEMP}/sbom-bin/cosign"
+
+    - name: Generate SBOM
+      id: sbom
+      shell: bash
+      env:
+        INPUT_ARTIFACT: ${{ inputs.artifact }}
+        INPUT_SOURCE_TYPE: ${{ inputs.source-type }}
+        INPUT_FORMAT: ${{ inputs.format }}
+        INPUT_OUTPUT: ${{ inputs.output }}
+        INPUT_FAIL_ON_MISSING_LICENSE: ${{ inputs.fail-on-missing-license }}
+      run: |
+        set -euo pipefail
+        "${GITHUB_ACTION_PATH}/scripts/generate-sbom.sh"
+
+    - name: Sign SBOM
+      if: inputs.sign == 'true'
+      shell: bash
+      env:
+        COSIGN_EXPERIMENTAL: "1"
+      run: |
+        set -euo pipefail
+        sbom="${{ steps.sbom.outputs.sbom-path }}"
+        cosign sign-blob --yes \
+          --output-signature "${sbom}.sig" \
+          --output-certificate "${sbom}.pem" \
+          "${sbom}"
+
+    - name: Attach SBOM to release
+      if: inputs.upload-release == 'true' && startsWith(github.ref, 'refs/tags/')
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+      run: |
+        set -euo pipefail
+        tag="${GITHUB_REF#refs/tags/}"
+        sbom="${{ steps.sbom.outputs.sbom-path }}"
+        assets=("$sbom")
+        [ -f "${sbom}.sig" ] && assets+=("${sbom}.sig")
+        [ -f "${sbom}.pem" ] && assets+=("${sbom}.pem")
+        gh release upload "$tag" "${assets[@]}" --clobber

@@ -1,0 +1,8 @@
+{
+  "artifacts": [
+    { "name": "left-pad", "version": "1.3.0", "type": "npm", "licenses": [ { "value": "MIT" } ] },
+    { "name": "mystery-lib", "version": "0.1.0", "type": "npm", "licenses": [] },
+    { "name": "vendored-blob", "version": "2.0.0", "type": "binary" }
+  ],
+  "descriptor": { "name": "syft", "version": "1.18.1" }
+}

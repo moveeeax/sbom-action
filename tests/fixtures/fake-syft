@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# fake-syft — a Syft stand-in for smoke tests. Understands the single call shape
+# generate-sbom.sh makes: `fake-syft scan <ref> -o <fmt>=<file>`.
+# For syft-json it copies the fixture named by FAKE_SYFT_JSON; for any other
+# format it writes a small deterministic placeholder so the file is non-empty.
+set -euo pipefail
+
+out_spec=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -o) out_spec="$2"; shift 2 ;;
+    *)  shift ;;
+  esac
+done
+
+[ -n "$out_spec" ] || { echo "fake-syft: missing -o fmt=file" >&2; exit 2; }
+fmt="${out_spec%%=*}"
+file="${out_spec#*=}"
+
+if [ "$fmt" = "syft-json" ]; then
+  cp "${FAKE_SYFT_JSON:?set FAKE_SYFT_JSON to a fixture path}" "$file"
+else
+  printf '{"placeholder":"%s"}\n' "$fmt" > "$file"
+fi

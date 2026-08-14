@@ -1,0 +1,47 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    # Runs on a self-hosted ARC runner (runs-on = scale set name).
+    runs-on: sbom-action
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install test tools
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends bats shellcheck jq
+
+      - name: shellcheck
+        run: shellcheck -x scripts/lib.sh scripts/generate-sbom.sh tests/fixtures/fake-syft
+
+      - name: bats
+        run: bats tests/
+
+  self-test:
+    # End-to-end: run the action against this repo with real Syft.
+    runs-on: sbom-action
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate SBOM for this repo
+        id: sbom
+        uses: ./
+        with:
+          artifact: .
+          format: cyclonedx-json
+          upload-release: "false"
+
+      - name: Check the SBOM is valid JSON with components
+        run: |
+          set -euo pipefail
+          jq -e '.components | length > 0' "${{ steps.sbom.outputs.sbom-path }}"
