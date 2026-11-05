@@ -30,17 +30,17 @@ inputs:
     required: false
     default: "true"
   sign:
-    description: "Sign the SBOM with Cosign (keyless) and attach the .sig."
+    description: "Sign the SBOM with Cosign (keyless) and attach the Sigstore bundle (<sbom>.sigstore.json)."
     required: false
     default: "false"
   syft-version:
-    description: "Syft version to install (e.g. v1.18.1)."
+    description: "Syft version to install (e.g. v1.56.0)."
     required: false
-    default: "v1.18.1"
+    default: "v1.56.0"
   cosign-version:
-    description: "Cosign version to install when sign=true."
+    description: "Cosign version to install when sign=true (e.g. v3.1.4)."
     required: false
-    default: "v2.4.1"
+    default: "v3.1.4"
   github-token:
     description: "Token used to upload the SBOM to the release."
     required: false
@@ -56,28 +56,63 @@ outputs:
   missing-license-count:
     description: "Number of components missing license metadata (0 unless the gate ran)."
     value: ${{ steps.sbom.outputs.missing-license-count }}
+  bundle-path:
+    description: "Path to the Sigstore bundle (signature + certificate) when sign=true, empty otherwise."
+    value: ${{ steps.sign.outputs.bundle-path }}
 
 runs:
   using: "composite"
   steps:
     - name: Install Syft
       shell: bash
+      env:
+        SYFT_VERSION: ${{ inputs.syft-version }}
       run: |
         set -euo pipefail
-        curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh \
-          | sh -s -- -b "${RUNNER_TEMP}/sbom-bin" "${{ inputs.syft-version }}"
-        echo "${RUNNER_TEMP}/sbom-bin" >> "$GITHUB_PATH"
+        ver="${SYFT_VERSION#v}"
+        case "$(uname -m)" in
+          x86_64) arch=amd64 ;;
+          aarch64|arm64) arch=arm64 ;;
+          *) echo "sbom-action: unsupported architecture $(uname -m)" >&2; exit 1 ;;
+        esac
+        bin="${RUNNER_TEMP}/sbom-bin"
+        tmp="$(mktemp -d)"
+        base="https://github.com/anchore/syft/releases/download/v${ver}"
+        tarball="syft_${ver}_linux_${arch}.tar.gz"
+        curl -sSfL -o "${tmp}/${tarball}" "${base}/${tarball}"
+        curl -sSfL -o "${tmp}/checksums.txt" "${base}/syft_${ver}_checksums.txt"
+        (cd "$tmp" && grep -E "  ${tarball}\$" checksums.txt | sha256sum -c -)
+        mkdir -p "$bin"
+        tar -xzf "${tmp}/${tarball}" -C "$tmp" syft
+        install -m 0755 "${tmp}/syft" "${bin}/syft"
+        rm -rf "$tmp"
+        echo "$bin" >> "$GITHUB_PATH"
+        "${bin}/syft" version
 
     - name: Install Cosign
       if: inputs.sign == 'true'
       shell: bash
+      env:
+        COSIGN_VERSION: ${{ inputs.cosign-version }}
       run: |
         set -euo pipefail
-        ver="${{ inputs.cosign-version }}"
-        arch="$(uname -m)"; case "$arch" in x86_64) arch=amd64 ;; aarch64|arm64) arch=arm64 ;; esac
-        curl -sSfL -o "${RUNNER_TEMP}/sbom-bin/cosign" \
-          "https://github.com/sigstore/cosign/releases/download/${ver}/cosign-linux-${arch}"
-        chmod +x "${RUNNER_TEMP}/sbom-bin/cosign"
+        ver="v${COSIGN_VERSION#v}"
+        case "$(uname -m)" in
+          x86_64) arch=amd64 ;;
+          aarch64|arm64) arch=arm64 ;;
+          *) echo "sbom-action: unsupported architecture $(uname -m)" >&2; exit 1 ;;
+        esac
+        bin="${RUNNER_TEMP}/sbom-bin"
+        tmp="$(mktemp -d)"
+        base="https://github.com/sigstore/cosign/releases/download/${ver}"
+        asset="cosign-linux-${arch}"
+        curl -sSfL -o "${tmp}/${asset}" "${base}/${asset}"
+        curl -sSfL -o "${tmp}/checksums.txt" "${base}/cosign_checksums.txt"
+        (cd "$tmp" && grep -E "  ${asset}\$" checksums.txt | sha256sum -c -)
+        mkdir -p "$bin"
+        install -m 0755 "${tmp}/${asset}" "${bin}/cosign"
+        rm -rf "$tmp"
+        "${bin}/cosign" version
 
     - name: Generate SBOM
       id: sbom
@@ -93,28 +128,27 @@ runs:
         "${GITHUB_ACTION_PATH}/scripts/generate-sbom.sh"
 
     - name: Sign SBOM
+      id: sign
       if: inputs.sign == 'true'
       shell: bash
       env:
-        COSIGN_EXPERIMENTAL: "1"
+        SBOM_PATH: ${{ steps.sbom.outputs.sbom-path }}
       run: |
         set -euo pipefail
-        sbom="${{ steps.sbom.outputs.sbom-path }}"
-        cosign sign-blob --yes \
-          --output-signature "${sbom}.sig" \
-          --output-certificate "${sbom}.pem" \
-          "${sbom}"
+        bundle="${SBOM_PATH}.sigstore.json"
+        "${RUNNER_TEMP}/sbom-bin/cosign" sign-blob --yes --bundle "$bundle" "$SBOM_PATH"
+        echo "bundle-path=${bundle}" >> "$GITHUB_OUTPUT"
 
     - name: Attach SBOM to release
       if: inputs.upload-release == 'true' && startsWith(github.ref, 'refs/tags/')
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.github-token }}
+        SBOM_PATH: ${{ steps.sbom.outputs.sbom-path }}
+        BUNDLE_PATH: ${{ steps.sign.outputs.bundle-path }}
       run: |
         set -euo pipefail
         tag="${GITHUB_REF#refs/tags/}"
-        sbom="${{ steps.sbom.outputs.sbom-path }}"
-        assets=("$sbom")
-        [ -f "${sbom}.sig" ] && assets+=("${sbom}.sig")
-        [ -f "${sbom}.pem" ] && assets+=("${sbom}.pem")
+        assets=("$SBOM_PATH")
+        [ -n "$BUNDLE_PATH" ] && [ -f "$BUNDLE_PATH" ] && assets+=("$BUNDLE_PATH")
         gh release upload "$tag" "${assets[@]}" --clobber

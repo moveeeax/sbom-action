@@ -16,10 +16,10 @@ jobs:
   sbom:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Generate + attach SBOM
-        uses: moveeeax/sbom-action@v1
+        uses: moveeeax/sbom-action@v0
         with:
           artifact: .
           source-type: dir
