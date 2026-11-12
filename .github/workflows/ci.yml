@@ -14,7 +14,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install test tools
         run: |
@@ -40,7 +40,7 @@ jobs:
       # Pull requests from forks get no OIDC token, so signing is skipped there.
       CAN_SIGN: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Generate SBOM for this repo
         id: sbom
@@ -73,3 +73,25 @@ jobs:
             --certificate-identity-regexp "^https://github.com/${GITHUB_REPOSITORY}/" \
             --certificate-oidc-issuer https://token.actions.githubusercontent.com \
             "$SBOM_PATH"
+
+      - name: Run the license policy against this repo
+        id: policy
+        uses: ./
+        with:
+          artifact: .
+          format: spdx-json
+          output: policy-sbom.spdx.json
+          upload-release: "false"
+          license-deny: AGPL-3.0-only, GPL-3.0-only
+          # Components Syft finds here (workflow actions) may carry no license metadata.
+          allow-unknown-license: "true"
+
+      - name: Check the license policy outputs
+        env:
+          REPORT: ${{ steps.policy.outputs.license-report-path }}
+          VIOLATIONS: ${{ steps.policy.outputs.license-violation-count }}
+        run: |
+          set -euo pipefail
+          test "$REPORT" = policy-sbom.spdx.json.license-report.json
+          test "$VIOLATIONS" = 0
+          jq -e '.violations == 0 and (.packages | length > 0)' "$REPORT"

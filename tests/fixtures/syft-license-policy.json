@@ -1,0 +1,21 @@
+{
+  "artifacts": [
+    { "name": "left-pad", "version": "1.3.0", "type": "npm",
+      "licenses": [ { "value": "MIT", "spdxExpression": "MIT", "type": "declared", "locations": [ { "path": "/node_modules/left-pad/package.json" } ] } ] },
+    { "name": "requests", "version": "2.32.0", "type": "python",
+      "licenses": [ { "value": "Apache License, Version 2.0", "spdxExpression": "", "type": "declared", "locations": [ { "path": "/site-packages/requests-2.32.0.dist-info/METADATA" } ] } ] },
+    { "name": "dual-lib", "version": "4.0.0", "type": "npm",
+      "licenses": [ { "value": "(MIT OR GPL-3.0-only)", "spdxExpression": "MIT OR GPL-3.0-only", "type": "declared" } ] },
+    { "name": "copyleft-deep", "version": "0.9.1", "type": "go-module",
+      "licenses": [ { "value": "AGPL-3.0", "spdxExpression": "AGPL-3.0", "type": "concluded", "locations": [ { "path": "/go/pkg/mod/example.com/copyleft-deep@v0.9.1/LICENSE" } ] } ] },
+    { "name": "liar", "version": "1.0.0", "type": "npm",
+      "licenses": [
+        { "value": "MIT", "spdxExpression": "MIT", "type": "declared", "locations": [ { "path": "/node_modules/liar/package.json" } ] },
+        { "value": "GPL-3.0-only", "spdxExpression": "GPL-3.0-only", "type": "concluded", "locations": [ { "path": "/node_modules/liar/vendor/COPYING" } ] }
+      ] },
+    { "name": "custom-blob", "version": "2.0.0", "type": "binary",
+      "licenses": [ { "value": "LicenseRef-Proprietary", "spdxExpression": "LicenseRef-Proprietary", "type": "declared" } ] },
+    { "name": "mystery-lib", "version": "0.1.0", "type": "npm", "licenses": [] }
+  ],
+  "descriptor": { "name": "syft", "version": "1.56.0" }
+}
