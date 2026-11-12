@@ -25,6 +25,26 @@ inputs:
     description: "Fail the run if any component lacks license metadata."
     required: false
     default: "false"
+  license-allow:
+    description: "SPDX license ids allowed for components, comma- or newline-separated (e.g. MIT, Apache-2.0). When set, any other license fails the run."
+    required: false
+    default: ""
+  license-deny:
+    description: "SPDX license ids that fail the run, comma- or newline-separated (e.g. AGPL-3.0-only). Deny wins over allow for the same id."
+    required: false
+    default: ""
+  license-exceptions:
+    description: "Per-component waivers for the license policy, one per line: `<name>[@<version>] <YYYY-MM-DD> [reason]`. A waiver stops applying after its date."
+    required: false
+    default: ""
+  allow-unknown-license:
+    description: "Let components pass the license policy when their license is missing or is not a SPDX id (LicenseRef-*, free text)."
+    required: false
+    default: "false"
+  fail-on-license-mismatch:
+    description: "Fail when a component's declared license differs from the license Syft concluded from its files. Mismatches are always reported."
+    required: false
+    default: "false"
   upload-release:
     description: "Attach the SBOM to the release when the workflow runs on a tag."
     required: false
@@ -56,6 +76,15 @@ outputs:
   missing-license-count:
     description: "Number of components missing license metadata (0 unless the gate ran)."
     value: ${{ steps.sbom.outputs.missing-license-count }}
+  license-violation-count:
+    description: "Number of components failing the license policy, waivers excluded (0 unless the policy ran)."
+    value: ${{ steps.sbom.outputs.license-violation-count }}
+  license-mismatch-count:
+    description: "Number of components whose declared and concluded licenses differ (0 unless the policy ran)."
+    value: ${{ steps.sbom.outputs.license-mismatch-count }}
+  license-report-path:
+    description: "Path to the JSON license policy report (<sbom>.license-report.json) when the policy ran, empty otherwise."
+    value: ${{ steps.sbom.outputs.license-report-path }}
   bundle-path:
     description: "Path to the Sigstore bundle (signature + certificate) when sign=true, empty otherwise."
     value: ${{ steps.sign.outputs.bundle-path }}
@@ -123,6 +152,11 @@ runs:
         INPUT_FORMAT: ${{ inputs.format }}
         INPUT_OUTPUT: ${{ inputs.output }}
         INPUT_FAIL_ON_MISSING_LICENSE: ${{ inputs.fail-on-missing-license }}
+        INPUT_LICENSE_ALLOW: ${{ inputs.license-allow }}
+        INPUT_LICENSE_DENY: ${{ inputs.license-deny }}
+        INPUT_LICENSE_EXCEPTIONS: ${{ inputs.license-exceptions }}
+        INPUT_ALLOW_UNKNOWN_LICENSE: ${{ inputs.allow-unknown-license }}
+        INPUT_FAIL_ON_LICENSE_MISMATCH: ${{ inputs.fail-on-license-mismatch }}
       run: |
         set -euo pipefail
         "${GITHUB_ACTION_PATH}/scripts/generate-sbom.sh"
